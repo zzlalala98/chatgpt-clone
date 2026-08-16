@@ -1018,6 +1018,12 @@ button {
   font-size: 13px;
 }
 
+.images-note {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: #566070;
+}
+
 .images-loading {
   display: flex;
   align-items: center;

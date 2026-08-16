@@ -106,9 +106,13 @@ export async function webSearch({ apiKey, keywords, maxResults = 5 }) {
   return res.json();
 }
 
-/** 图片生成 */
-export async function generateImage({ apiKey, prompt, model, n, size, quality }) {
-  const body = { prompt, model, n, size, quality, response_format: "url" };
+/**
+ * 图片生成
+ * 注意: 不能传 response_format — gpt-image-1.5 会直接 400 拒绝该参数;
+ * gemini 模型不受影响, 返回的 data[] 同时带 b64_json 与 url。
+ */
+export async function generateImage({ apiKey, prompt, model, n, size }) {
+  const body = { prompt, model, n, size };
   const res = await fetch(`${API_BASE}/v1/images/generations`, {
     method: "POST",
     headers: {
@@ -116,10 +120,13 @@ export async function generateImage({ apiKey, prompt, model, n, size, quality })
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(240000), // 图片生成可能很慢, 4 分钟上限
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new ApiError(`图片生成失败 HTTP ${res.status}: ${text.slice(0, 200)}`, res.status);
+    // 服务端偶发返回纯文本错误 (如 Internal Server Error)
+    const detail = text.trim().startsWith("{") ? text.slice(0, 200) : `服务端错误: ${text.trim().slice(0, 120) || "无响应体"}`;
+    throw new ApiError(`图片生成失败 HTTP ${res.status}: ${detail}`, res.status);
   }
   return res.json();
 }
