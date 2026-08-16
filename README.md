@@ -2,11 +2,14 @@
 
 一个 ChatGPT 风格的聊天应用，由 **AI Builder Space** 平台 API 驱动。
 
-- 🗂️ **多会话**：侧边栏新建/切换/重命名(双击)/删除，自动保存到浏览器 localStorage
-- 🔄 **流式回复**：SSE 流式打字机输出，可随时停止
-- 🧠 **多模型切换**：deepseek-v4-flash / deepseek-v4-pro / gpt-5 / grok-4-fast / kimi-k2.5 / gemini 等
-- 📝 **Markdown 渲染**：代码块、表格、引用 (react-markdown + GFM)
+- 🗂️ **多会话**：新建/切换/重命名(双击)/删除/搜索，自动保存到浏览器 localStorage
+- 🔄 **流式回复**：SSE 打字机输出，可停止 (Esc/按钮)，可**重新生成**、**编辑并重发**、**从此处截断分支**
+- 🧠 **多模型分组选择**：日常/推理旗舰/快速三组 (deepseek-v4-flash/pro、gpt-5、grok-4-fast/4.5、kimi-k2.5、gemini 等)
+- 🎛️ **参数面板**：温度 (0-2)、最大输出 tokens、系统提示词、**🔍 联网搜索开关** (Tavily 结果注入上下文)
+- 🖼️ **图像生成页签**：gpt-image-1.5 / gemini-2.5-flash-image，尺寸/数量可选，支持下载
+- 📝 **Markdown + 代码高亮**：代码块带语言标签与一键复制
 - 🔑 **API Key 管理**：Key 只存在本浏览器，与平台自身行为一致
+- 📱 **移动端适配**：侧边栏抽屉式展开
 
 ## 目录结构
 
