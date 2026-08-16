@@ -1,140 +1,122 @@
 import { useEffect, useRef, useState } from "react";
 import Message from "./Message.jsx";
+import Composer from "./Composer.jsx";
 
 const SUGGESTIONS = [
   "用三句话介绍什么是 MCP",
-  "帮我把这段文字翻译成英文并润色",
-  "写一个 Python 快速排序，带注释",
-  "总结一下如何把 React 应用部署到 Koyeb",
+  "把下面这段文字翻译成英文并润色",
+  "写一个带注释的 Python 快速排序",
+  "帮我总结一篇论文的要点（记得打开联网搜索）",
 ];
 
 export default function ChatView({
   session,
-  apiKey,
-  model,
-  models,
-  modelsError,
-  onModelChange,
   isStreaming,
+  searchOn,
   onSend,
   onStop,
-  onOpenSettings,
+  onRegenerate,
+  onEditResend,
+  onTruncate,
+  onOpenKey,
 }) {
   const [draft, setDraft] = useState("");
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editText, setEditText] = useState("");
   const scrollRef = useRef(null);
-  const inputRef = useRef(null);
   const messages = session?.messages || [];
-  const lastIsStreaming = messages.some((m) => m.streaming);
+  const streaming = messages.some((m) => m.streaming);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
-  // 新消息/流式输出时自动滚到底部
+  // 自动滚动: 靠近底部才跟随, 避免打断阅读
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, lastIsStreaming]);
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 160;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
-  const submit = () => {
-    const text = draft.trim();
-    if (!text) return;
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 200);
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  const submit = (text) => {
     setDraft("");
+    setEditingIndex(null);
     onSend(text);
   };
 
   return (
     <div className="chat">
-      {/* 顶部栏 */}
-      <header className="chat-header">
-        <div className="chat-title">{session ? session.title : "AI Chat"}</div>
-        <div className="chat-controls">
-          {modelsError && <span className="models-error" title={modelsError}>模型列表加载失败</span>}
-          <select
-            className="model-picker"
-            value={model}
-            onChange={(e) => onModelChange(e.target.value)}
-            title="切换模型"
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-            {models.length === 0 && (
-              <option value={model}>{model}</option>
-            )}
-          </select>
-          <button className="icon-btn" title="API Key 设置" onClick={onOpenSettings}>
-            ⚙️
-          </button>
-        </div>
-      </header>
-
-      {/* 消息区 */}
-      <div className="messages" ref={scrollRef}>
+      <div className="messages" ref={scrollRef} onScroll={onScroll}>
         {messages.length === 0 && (
           <div className="welcome">
-            <div className="welcome-logo">🤖</div>
+            <div className="welcome-logo">✦</div>
             <h2>有什么可以帮你?</h2>
             <p className="welcome-sub">
-              {apiKey
-                ? `当前模型: ${model} · 会话自动保存在本浏览器`
-                : "请先点击右上角 ⚙️ 设置 API Key (Settings 页面创建)"}
+              多会话 · 多模型 · 流式回复 · 可联网搜索
+              <br />
+              在右上角 🎛️ 调整温度/联网/系统提示，🔑 设置 API Key
             </p>
             <div className="suggestions">
               {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  className="suggestion-chip"
-                  onClick={() => {
-                    setDraft(s);
-                    inputRef.current?.focus();
-                  }}
-                >
+                <button key={s} className="suggestion-chip" onClick={() => setDraft(s)}>
                   {s}
                 </button>
               ))}
             </div>
           </div>
         )}
+
         {messages.map((m, i) => (
-          <Message key={i} role={m.role} content={m.content} streaming={m.streaming} />
+          <Message
+            key={i}
+            index={i}
+            role={m.role}
+            content={m.content}
+            streaming={m.streaming}
+            isLast={i === messages.length - 1}
+            editing={editingIndex === i}
+            editText={editText}
+            onStartEdit={() => {
+              setEditingIndex(i);
+              setEditText(m.content);
+            }}
+            onCancelEdit={() => setEditingIndex(null)}
+            onChangeEdit={(t) => setEditText(t)}
+            onSaveEdit={() => {
+              onEditResend(i, editText);
+              setEditingIndex(null);
+            }}
+            onCopy={() => navigator.clipboard?.writeText(m.content).catch(() => {})}
+            onRegenerate={onRegenerate}
+            onTruncate={() => onTruncate(i)}
+          />
         ))}
+
+        {showScrollBtn && (
+          <button className="scroll-bottom-btn" onClick={scrollToBottom} title="滚动到底部">
+            ↓
+          </button>
+        )}
       </div>
 
-      {/* 输入区 */}
-      <footer className="composer">
-        {lastIsStreaming && (
-          <div className="streaming-bar">
-            <span className="spinner" /> 正在生成…
-            <button className="stop-btn" onClick={onStop}>停止</button>
-          </div>
-        )}
-        <div className="composer-box">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            placeholder={isStreaming ? "正在回复…" : "输入消息，Enter 发送，Shift+Enter 换行"}
-            disabled={isStreaming}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <button
-            className="send-btn"
-            disabled={isStreaming || !draft.trim()}
-            onClick={submit}
-            title="发送"
-          >
-            ➤
-          </button>
-        </div>
-        <div className="composer-note">
-          由 AI Builder Space API 驱动 · 模型与对话记录仅存于本地
-        </div>
-      </footer>
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        isStreaming={streaming}
+        searchOn={searchOn}
+        onSend={submit}
+        onStop={onStop}
+      />
     </div>
   );
 }

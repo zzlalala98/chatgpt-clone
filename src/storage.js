@@ -3,10 +3,13 @@
 const SESSIONS_KEY = "aibuilder.chat.sessions.v1";
 const API_KEY_KEY = "aibuilder.chat.apiKey";
 const MODEL_KEY = "aibuilder.chat.model";
+const SETTINGS_KEY = "aibuilder.chat.settings.v1";
 
 export function uid() {
-  return globalThis.crypto?.randomUUID?.() ||
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  );
 }
 
 export function loadSessions() {
@@ -37,4 +40,18 @@ export function loadModel() {
 
 export function saveModel(model) {
   localStorage.setItem(MODEL_KEY, model);
+}
+
+/** 参数设置: { temperature, maxTokens, searchOn, systemPrompt } */
+export function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveSettings(settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }

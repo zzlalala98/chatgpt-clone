@@ -7,7 +7,7 @@ export default function KeyModal({ current, onSave, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>API Key 设置</h3>
+        <h3>🔑 API Key 设置</h3>
         <p className="modal-desc">
           使用 AI Builder Space 的 Builder API Key (以 <code>sk_</code> 开头)。
           在平台 <b>Settings</b> 页面点击 <b>Create Key</b> 生成。
@@ -26,7 +26,9 @@ export default function KeyModal({ current, onSave, onClose }) {
           </button>
         </div>
         <div className="modal-actions">
-          <button className="btn-ghost" onClick={onClose}>取消</button>
+          <button className="btn-ghost" onClick={onClose}>
+            取消
+          </button>
           <button
             className="btn-primary"
             disabled={!value.trim()}
