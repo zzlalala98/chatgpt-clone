@@ -1,9 +1,5 @@
-node_modules
-dist
-.npm-cache
 .git
-*.log
-.DS_Store
-.env
-.env.local
-README.md
+.env*
+**/.env*
+node_modules
+__pycache__
