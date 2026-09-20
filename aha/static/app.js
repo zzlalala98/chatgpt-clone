@@ -2,10 +2,32 @@ import {put, all} from './store.js';
 import {wav, WINDOW_SECONDS} from './audio-core.js';
 const $ = id => document.getElementById(id);
 let recording = false;
-let access = sessionStorage.getItem('aha-access') || '';
+let access = '';
+try { access = sessionStorage.getItem('aha-access') || ''; } catch {}
 const authHeaders = () => ({Authorization: 'Bearer ' + access});
 $('key').value = access;
-$('unlock').onclick = async () => {access=$('key').value.trim();const r=await fetch('/api/health',{headers:authHeaders()});$('auth').textContent=r.ok?'已解锁，可以捕捉灵感。':'访问码不正确。';if(r.ok)sessionStorage.setItem('aha-access',access);};
+$('unlock').onclick = async () => {
+  access = $('key').value.trim();
+  if (!access) { $('auth').textContent = '请先输入访问码（只复制文件中的第二行）。'; return; }
+  const button = $('unlock'); button.disabled = true; button.textContent = '验证中…';
+  $('auth').textContent = '正在连接云端，最多等待 20 秒…';
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch('/api/health', {headers:authHeaders(), signal:controller.signal, cache:'no-store'});
+    if (!response.ok) {
+      $('auth').textContent = response.status === 401 ? '访问码不正确，请只复制文件第二行，不要复制标题。' : `云端暂时不可用（${response.status}），请稍后重试。`;
+      return;
+    }
+    const data = await response.json();
+    $('auth').textContent = data.ready ? '✓ 已解锁。下一步：点击下方「开启麦克风」。' : '访问码正确，但云端 AI 服务未配置。';
+    try {sessionStorage.setItem('aha-access', access);} catch {}
+    button.textContent = '已解锁';
+  } catch (error) {
+    $('auth').textContent = error.name === 'AbortError' ? '连接超时，请检查网络后重试；不是访问码错误。' : '无法连接云端，请检查网络或刷新页面后重试。';
+  } finally { clearTimeout(timeout); button.disabled = false; if(button.textContent !== '已解锁')button.textContent = '重新解锁'; }
+};
+$('key').addEventListener('keydown', event => {if(event.key === 'Enter')$('unlock').click();});
+
 let context, stream, recorder, source, seconds = 0, starting = false, total = 0;
 const urls = new Set();
 function url(blob) { const value = URL.createObjectURL(blob); urls.add(value); return value; }
