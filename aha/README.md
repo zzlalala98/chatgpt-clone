@@ -8,6 +8,6 @@ Deployed in the existing ai-chat service, from the aha-catcher branch. The main 
 - Server performs transcription and agent research in the request. Interrupted/failed requests can be retried from the locally saved audio. Durable cloud jobs and multi-device history are NOT implemented.
 - Mobile Safari must stay active; this web build does not promise locked-screen/background capture. A native app is still required for that experiment.
 - API requests require the private high-entropy access code. Only its SHA-256 digest is in access.json. The code is delivered locally, never in git or deployment environment variables. AI_BUILDER_TOKEN is injected by the platform.
-- The server writes no user recordings or transcripts to disk. New clients recover history only from their own browser storage.
+- Clients upload audio in 512 KiB parts to stay under the hosting proxy body limit. The server temporarily assembles audio on ephemeral disk, deletes it after processing, and removes abandoned uploads after one hour on the next upload request. At most four uploads and 96 MB of reserved audio are accepted. This is not durable cloud history; new clients recover history only from their own browser storage.
 
 Run from this directory with AI_BUILDER_TOKEN configured and uvicorn server:app. Deployment Dockerfile uses PORT.

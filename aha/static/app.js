@@ -95,10 +95,21 @@ async function createNote(blob, duration, restored = null) {
     retry.hidden = true; warning.textContent = ''; const started = performance.now();
     const tick = () => { progress.textContent = `已捕捉，正在转写与研究 · ${Math.floor((performance.now() - started)/1000)} 秒`; };
     tick(); const timer = setInterval(tick, 1000), controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 125000);
+    const timeout = setTimeout(() => controller.abort(), 300000);
     try {
-      const form = new FormData(); form.append('audio', blob, 'aha.wav');
-      const response = await fetch('/api/capture', {method: 'POST', body: form, headers:authHeaders(), signal: controller.signal});
+      entry.uploadID ||= crypto.randomUUID();
+      try { await put(entry); } catch { /* The original blob remains available for export. */ }
+      const chunkSize = 512 * 1024;
+      for (let offset = 0, index = 0; offset < blob.size; offset += chunkSize, index++) {
+        const part = await fetch(`/api/uploads/${entry.uploadID}/chunks/${index}?total_bytes=${blob.size}`, {
+          method: 'PUT', body: blob.slice(offset, offset + chunkSize), headers: authHeaders(), signal: controller.signal
+        });
+        if (!part.ok) {
+          const error = await part.json().catch(() => ({}));
+          throw new Error(error.detail || `分块上传失败（${part.status}），请重试。`);
+        }
+      }
+      const response = await fetch(`/api/uploads/${entry.uploadID}/complete`, {method: 'POST', headers:authHeaders(), signal:controller.signal});
       const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '请求失败，请重试。');
       Object.assign(entry, {result:data});try{await put(entry);}catch{warning.textContent='无法保存到浏览器，请下载笔记。';}
       transcript.textContent = data.transcript || '未识别到语音'; renderText(note, data.note || '暂无摘要'); warning.textContent = data.warning;

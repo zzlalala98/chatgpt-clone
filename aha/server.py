@@ -7,6 +7,8 @@ import os
 import time
 import wave
 from pathlib import Path
+from uuid import UUID
+from upload_store import UploadStore, CHUNK_BYTES
 
 import httpx
 from dotenv import load_dotenv
@@ -19,6 +21,8 @@ ROOT = Path(__file__).parent
 load_dotenv(ROOT / '.env')
 BASE = 'https://space.ai-builders.com/backend'
 app = FastAPI(title='Aha! Catcher')
+uploads = UploadStore()
+processing = asyncio.Lock()
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=['localhost', '127.0.0.1', 'testserver', 'ai-chat.ai-builders.space', '*.koyeb.app'])
 app.mount('/static', StaticFiles(directory=ROOT / 'static'), name='static')
 
@@ -45,7 +49,7 @@ def index():
 
 @app.get('/api/health')
 def health():
-    return {'ready': bool(os.getenv('AI_BUILDER_TOKEN'))}
+    return {'ready': bool(os.getenv('AI_BUILDER_TOKEN')), 'chunk_upload': True}
 
 def validate_audio(data):
     try:
@@ -85,13 +89,16 @@ async def pipeline(data, token):
 
 @app.post('/api/capture')
 async def capture(audio: UploadFile):
-    token = os.getenv('AI_BUILDER_TOKEN')
-    if not token:
-        raise HTTPException(503, '请在服务端 .env 中配置 AI_BUILDER_TOKEN。')
     data = await audio.read(64_000_001)
     await audio.close()
     if len(data) > 64_000_000:
         raise HTTPException(413, '音频文件过大。')
+    return await process_audio(data)
+
+async def process_audio(data):
+    token = os.getenv('AI_BUILDER_TOKEN')
+    if not token:
+        raise HTTPException(503, '服务端尚未配置 AI 引擎。')
     duration = validate_audio(data)
     start = time.monotonic()
     try:
@@ -105,3 +112,25 @@ async def capture(audio: UploadFile):
     except (httpx.HTTPError, ValueError, KeyError):
         raise HTTPException(502, '平台响应异常，请稍后重试。')
     return {**result, 'duration': round(duration, 2), 'elapsed': round(time.monotonic() - start, 1)}
+
+
+@app.put('/api/uploads/{upload_id}/chunks/{index}')
+async def upload_chunk(upload_id: UUID, index: int, total_bytes: int, request: Request):
+    data = bytearray()
+    async for part in request.stream():
+        data.extend(part)
+        if len(data) > CHUNK_BYTES:
+            raise HTTPException(413, '每个分块不能超过 512 KiB。')
+    return uploads.put(str(upload_id), index, total_bytes, bytes(data))
+
+@app.post('/api/uploads/{upload_id}/complete')
+async def complete_upload(upload_id: UUID):
+    if processing.locked():
+        raise HTTPException(429, '其他音频正在处理，请稍后重试。')
+    identifier = str(upload_id)
+    async with processing:
+        path = uploads.ready(identifier)
+        try:
+            return await process_audio(path.read_bytes())
+        finally:
+            uploads.remove(identifier)
