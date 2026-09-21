@@ -87,13 +87,13 @@ async function createNote(blob, duration, restored = null) {
   const audioURL = url(blob); download.href = audioURL; download.download = `aha-${captured.getTime()}.wav`;
   const player = element('audio'); player.controls = true; player.src = audioURL;
   retry.hidden = true; save.hidden = true; actions.append(download, retry, save);
-  card.append(title, progress, player, element('h4', '', '原始转录'), transcript, element('h4', '', '灵感与研究'), note, warning, actions);
+  card.append(title, progress, player, element('h4', '', '原始转录'), transcript, element('h4', '', '简要笔记'), note, warning, actions);
   $('results').prepend(card); $('empty').hidden = true; $('count').textContent = `${++total} 条捕捉`;
   let savedText = '';
   save.onclick = () => { const a = element('a'); a.href = url(new Blob([savedText], {type:'text/markdown;charset=utf-8'})); a.download = `aha-${captured.getTime()}.md`; a.click(); };
   const run = async () => {
     retry.hidden = true; warning.textContent = ''; const started = performance.now();
-    const tick = () => { progress.textContent = `已捕捉，正在转写与研究 · ${Math.floor((performance.now() - started)/1000)} 秒`; };
+    const tick = () => { progress.textContent = `已捕捉，正在转写与整理 · ${Math.floor((performance.now() - started)/1000)} 秒`; };
     tick(); const timer = setInterval(tick, 1000), controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 300000);
     try {
@@ -117,6 +117,24 @@ async function createNote(blob, duration, restored = null) {
       savedText = `# Aha! ${captured.toLocaleString('zh-CN')}\n\n## 原始转录\n${data.transcript}\n\n${data.note}\n\n${data.warning || ''}`; save.hidden = false;
     } catch (error) { progress.textContent = '处理未完成 · 音频已保留在本页'; warning.textContent = error.name === 'AbortError' ? '处理超时，请重试。' : error.message; retry.hidden = false; }
     finally { clearInterval(timer); clearTimeout(timeout); }
+  };
+  const researchButton = element('button', 'action', '深入研究（可选）');
+  const researchText = element('div', 'text');
+  actions.append(researchButton); card.append(researchText);
+  if (entry.research) renderText(researchText, entry.research);
+  researchButton.onclick = async () => {
+    if (!entry.result?.transcript) { warning.textContent = '请先完成转写。'; return; }
+    researchButton.disabled = true; researchButton.textContent = '正在深入研究…';
+    const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 90000);
+    try {
+      const response = await fetch('/api/research', {method:'POST', headers:{...authHeaders(), 'Content-Type':'application/json'}, body:JSON.stringify({transcript:entry.result.transcript}), signal:controller.signal});
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '研究暂不可用。');
+      entry.research = data.research; renderText(researchText, entry.research);
+      savedText += '\n\n## 深入研究\n' + entry.research;
+      try { await put(entry); } catch { warning.textContent='研究已生成，但无法保存到浏览器，请下载笔记。'; }
+    } catch(error) { warning.textContent=error.name==='AbortError' ? '研究超时，原笔记保留。' : error.message; }
+    finally { clearTimeout(timeout); researchButton.disabled=false; researchButton.textContent='深入研究（可选）'; }
   };
   retry.onclick = run;
   if(restored){
