@@ -6,6 +6,8 @@ import io
 import os
 import time
 import wave
+import subprocess
+import tempfile
 from pathlib import Path
 from uuid import UUID
 from upload_store import UploadStore, CHUNK_BYTES
@@ -49,9 +51,22 @@ def index():
 
 @app.get('/api/health')
 def health():
-    return {'ready': bool(os.getenv('AI_BUILDER_TOKEN')), 'chunk_upload': True}
+    return {'ready': bool(os.getenv('AI_BUILDER_TOKEN')), 'chunk_upload': True, 'aac_upload': True}
 
 def validate_audio(data):
+    if data[4:8] == b'ftyp':
+        # Decode locally to validate actual audio and duration, never trust container metadata.
+        with tempfile.TemporaryDirectory(prefix='aha-validate-') as directory:
+            source = Path(directory) / 'audio.m4a'
+            target = Path(directory) / 'audio.wav'
+            source.write_bytes(data)
+            try:
+                subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-xerror', '-protocol_whitelist', 'file',
+                    '-i', str(source), '-map', '0:a:0', '-t', '601', '-ac', '1', '-ar', '16000',
+                    '-c:a', 'pcm_s16le', str(target)], check=True, timeout=20, capture_output=True)
+                return validate_audio(target.read_bytes())
+            except (subprocess.SubprocessError, OSError):
+                raise HTTPException(400, 'AAC 音频损坏或无法解码，请保留原音频并重试。')
     try:
         with wave.open(io.BytesIO(data)) as audio:
             duration = audio.getnframes() / audio.getframerate()
@@ -61,11 +76,11 @@ def validate_audio(data):
                 raise ValueError()
             return duration
     except (wave.Error, EOFError, ValueError, ZeroDivisionError):
-        raise HTTPException(400, '请提交不超过 10 分钟的单声道 PCM WAV 音频。')
+        raise HTTPException(400, '请提交不超过 10 分钟的 WAV 或 AAC/M4A 音频。')
 
 async def pipeline(data, token):
     async with httpx.AsyncClient(timeout=105, headers={'Authorization': f'Bearer {token}'}) as client:
-        response = await client.post(BASE + '/v1/audio/transcriptions', files={'audio_file': ('aha.wav', data, 'audio/wav')}, timeout=45)
+        response = await client.post(BASE + '/v1/audio/transcriptions', files={'audio_file': (('aha.m4a', data, 'audio/mp4') if data[4:8] == b'ftyp' else ('aha.wav', data, 'audio/wav'))}, timeout=45)
         response.raise_for_status()
         transcript = response.json().get('text', '').strip()
         result = {'transcript': transcript, 'note': '', 'warning': ''}
@@ -99,7 +114,7 @@ async def process_audio(data):
     token = os.getenv('AI_BUILDER_TOKEN')
     if not token:
         raise HTTPException(503, '服务端尚未配置 AI 引擎。')
-    duration = validate_audio(data)
+    duration = await asyncio.to_thread(validate_audio, data)
     start = time.monotonic()
     try:
         result = await asyncio.wait_for(pipeline(data, token), timeout=115)
